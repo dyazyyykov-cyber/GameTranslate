@@ -1,0 +1,31 @@
+# GameTranslate Requirements
+# Python 3.10+ required
+
+# PyTorch с CUDA support
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Transformers и AI библиотеки
+transformers>=4.40.0
+accelerate>=0.27.0
+huggingface_hub>=0.20.0
+
+# LLM библиотеки
+llama-cpp-python>=0.2.0
+
+# OCR и обработка изображений  
+paddleocr>=2.7.0.3
+opencv-python>=4.8.0
+pillow>=10.0.0
+
+# Audio обработка
+librosa>=0.10.0
+pydub>=0.25.1
+
+# TTS (опционально - для облачного TTS)
+openai>=1.3.0
+
+# Утилиты
+numpy>=1.24.0
+requests>=2.31.0
