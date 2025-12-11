@@ -1,0 +1,17 @@
+{
+    "monitor": {
+        "left": 787,
+        "top": 1030,
+        "width": 1048,
+        "height": 165
+    },
+    "translate": true,
+    "debug": true,
+    "border": true,
+    "win_pos": {
+        "x": 71,
+        "y": 141
+    },
+    "ocr_gpu": true,
+    "ocr_detail": 0
+}

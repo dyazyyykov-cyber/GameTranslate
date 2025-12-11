@@ -1,0 +1,25 @@
+# Виртуальное окружение
+venv/
+.env/
+*.env
+
+# Python-кэш
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE
+.idea/
+.vscode/
+
+# Локальные модели (веса и т.п.)
+models/
+
+# Логи, временные файлы
+logs/
+*.log
+*.tmp
+
+# Файлы ОС
+.DS_Store
+Thumbs.db
