@@ -77,7 +77,8 @@ class WindowsOCREngine:
     def run(self, img: np.ndarray) -> str:
         if self.loop is None:
             raise RuntimeError("Event loop is not attached for OCR thread")
-        return self.loop.run_until_complete(self._run(img))
+        future = asyncio.run_coroutine_threadsafe(self._run(img), self.loop)
+        return future.result(timeout=5)
 
 
 class CT2Translator:
@@ -189,8 +190,14 @@ class AIEngine:
 
         prev_small = None
         while self.running.is_set():
-            frame = capture_func()
+            try:
+                frame = capture_func()
+            except Exception as exc:
+                self.log(f"Capture error: {exc}")
+                time.sleep(0.2)
+                continue
             if frame is None:
+                time.sleep(delay)
                 continue
 
             small = cv2.resize(frame, (0, 0), fx=0.3, fy=0.3)
@@ -209,7 +216,10 @@ class AIEngine:
 
     def _ocr_loop(self):
         loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        loop_thread = threading.Thread(
+            target=self._run_loop_forever, args=(loop,), daemon=True
+        )
+        loop_thread.start()
         self.ocr_engine.attach_loop(loop)
 
         while self.running.is_set():
@@ -225,6 +235,15 @@ class AIEngine:
             stable = self.stabilizer.push(text)
             if stable:
                 self.text_queue.put_latest(stable)
+
+        loop.call_soon_threadsafe(loop.stop)
+        loop_thread.join(timeout=1)
+        loop.close()
+
+    @staticmethod
+    def _run_loop_forever(loop: asyncio.AbstractEventLoop) -> None:
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
 
     def recognize(self, img) -> Optional[str]:
         text = self.ocr_engine.run(img)
