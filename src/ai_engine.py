@@ -69,10 +69,25 @@ class WindowsOCREngine:
     def attach_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop = loop
 
+    @staticmethod
+    def _extract_text(res) -> str:
+        if res is None:
+            return ""
+        if isinstance(res, str):
+            return res
+        if hasattr(res, "text"):
+            try:
+                return res.text or ""
+            except Exception:
+                pass
+        if isinstance(res, dict) and "text" in res:
+            return res.get("text") or ""
+        return str(res)
+
     async def _run(self, img: np.ndarray) -> str:
         # WinOCR ожидает BGR/PIL; библиотека умеет принимать numpy-массивы
         res = await self.ocr.recognize(img)
-        return res or ""
+        return self._extract_text(res)
 
     def run(self, img: np.ndarray) -> str:
         if self.loop is None:
@@ -191,6 +206,7 @@ class AIEngine:
         while self.running.is_set():
             frame = capture_func()
             if frame is None:
+                time.sleep(delay)
                 continue
 
             small = cv2.resize(frame, (0, 0), fx=0.3, fy=0.3)
@@ -218,7 +234,11 @@ class AIEngine:
             except Empty:
                 continue
 
-            text = self.recognize(frame)
+            try:
+                text = self.recognize(frame)
+            except Exception as e:
+                self.log(f"⚠️ OCR loop error: {e}")
+                continue
             if not text:
                 continue
 
@@ -227,8 +247,12 @@ class AIEngine:
                 self.text_queue.put_latest(stable)
 
     def recognize(self, img) -> Optional[str]:
-        text = self.ocr_engine.run(img)
-        text = " ".join(text.split())  # нормализация пробелов
+        try:
+            text = self.ocr_engine.run(img)
+        except Exception as e:
+            self.log(f"⚠️ OCR engine error: {e}")
+            return None
+        text = " ".join(str(text).split())  # нормализация пробелов
         if len(text) < 2:
             return None
         return text

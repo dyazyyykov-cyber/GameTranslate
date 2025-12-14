@@ -7,7 +7,6 @@ import datetime
 from PyQt6.QtWidgets import QApplication, QMainWindow, QFrame, QLabel, QVBoxLayout, QWidget
 from PyQt6.QtCore import Qt, pyqtSignal, QObject, QRect
 from PyQt6.QtGui import QColor
-from difflib import SequenceMatcher
 
 # --- ИМПОРТ МОДУЛЕЙ ПРОЕКТА ---
 from src.config import cfg
@@ -143,10 +142,6 @@ class MainApp(QMainWindow):
                 try:
                     stable_text = ai.text_queue.get(timeout=0.05)
                 except Exception:
-                    continue
-
-                similarity = SequenceMatcher(None, stable_text, getattr(mt_tts_job, "last_text", "")).ratio()
-                if similarity >= 0.85:
                     continue
 
                 audio.stop()
