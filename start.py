@@ -144,6 +144,10 @@ class MainApp(QMainWindow):
                 except Exception:
                     continue
 
+                last = getattr(mt_tts_job, "last_text", None)
+                if last is not None and stable_text == last:
+                    continue
+
                 audio.stop()
                 ai.abort()
 
