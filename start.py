@@ -132,7 +132,13 @@ class MainApp(QMainWindow):
         last_audio_finish_time = 0.0
 
         def capture_job():
-            ai.start_capture(lambda: cap.grab(cfg.get("monitor")))
+            def safe_grab():
+                rect = cfg.get("monitor")
+                if rect.get("width", 0) <= 0 or rect.get("height", 0) <= 0:
+                    return None
+                return cap.grab(rect)
+
+            ai.start_capture(safe_grab)
 
         def ocr_job():
             ai.start_ocr()
@@ -146,7 +152,7 @@ class MainApp(QMainWindow):
                     continue
 
                 similarity = SequenceMatcher(None, stable_text, getattr(mt_tts_job, "last_text", "")).ratio()
-                if similarity >= 0.85:
+                if similarity >= 0.95:
                     continue
 
                 audio.stop()
