@@ -123,106 +123,79 @@ class MainApp(QMainWindow):
             cap = ScreenCap()
             ai = AIEngine(self.signals.log.emit)
             audio = AudioPlayer()
-            stab = TextStabilizer(history=3, threshold=0.85)
+            stab = ai.stabilizer
             self.signals.log.emit("✅ Система готова к работе!")
         except Exception as e:
             self.signals.log.emit(f"FATAL ERROR: {e}")
             return
 
-        last_stable_text = ""
+        last_audio_finish_time = 0.0
 
-        # Переменные для отслеживания статуса озвучки
-        last_audio_finish_time = 0
-        last_phrase_duration = 0
+        def capture_job():
+            ai.start_capture(lambda: cap.grab(cfg.get("monitor")))
 
-        while self.running:
-            rect = cfg.get("monitor")
-            if rect['width'] == 0:
-                time.sleep(1.0)
-                continue
+        def ocr_job():
+            ai.start_ocr()
 
-            loop_start = time.time()
-
-            try:
-                # 1. ЗАХВАТ
-                img = cap.grab(rect)
-                if img is None:
-                    time.sleep(0.1);
+        def mt_tts_job():
+            nonlocal last_audio_finish_time
+            while self.running:
+                try:
+                    stable_text = ai.text_queue.get(timeout=0.05)
+                except Exception:
                     continue
 
-                # 2. OCR (с замером времени)
-                t_ocr_start = time.time()
-                raw_text = ai.recognize(img)
-                t_ocr = time.time() - t_ocr_start
+                similarity = SequenceMatcher(None, stable_text, getattr(mt_tts_job, "last_text", "")).ratio()
+                if similarity >= 0.85:
+                    continue
 
-                if raw_text:
-                    stable_text = stab.push(raw_text)
+                audio.stop()
+                ai.abort()
 
-                    if stable_text:
-                        similarity = SequenceMatcher(None, stable_text, last_stable_text).ratio()
+                translated_text = ""
+                speaker_name = ""
+                voice_duration = 0.0
+                t_mt = 0.0
 
-                        # --- НОВАЯ ФРАЗА ---
-                        if similarity < 0.85:
-                            # Проверяем, успела ли договорить прошлая фраза
-                            now = time.time()
-                            was_interrupted = now < last_audio_finish_time
-                            prev_status = "🔴 Interrupted" if was_interrupted else "🟢 Completed"
+                if cfg.get("translate"):
+                    t_mt_start = time.time()
+                    res = ai.translate(stable_text)
+                    t_mt = time.time() - t_mt_start
 
-                            # Если было прерывание, можно вывести лог о предыдущей фразе (опционально)
-                            # Но мы сделаем красивый блок для ТЕКУЩЕЙ фразы
+                    if res and res['text']:
+                        translated_text = res['text']
+                        self.signals.subtitle.emit(res['name'], res['text'])
+                        voice_duration, speaker_name = audio.speak(res['text'], res['name'], res['gender'])
+                else:
+                    translated_text = stable_text
+                    self.signals.subtitle.emit("", stable_text)
+                    voice_duration, speaker_name = audio.speak(stable_text, "", "m")
 
-                            # Остановка предыдущего
-                            audio.stop()
-                            ai.abort()
+                current_time_str = datetime.datetime.now().strftime("%H:%M:%S")
+                prev_status = "🔴 Interrupted" if time.time() < last_audio_finish_time else "🟢 Completed"
 
-                            # --- ЛОГИКА ПЕРЕВОДА И ОЗВУЧКИ ---
-                            translated_text = ""
-                            speaker_name = ""
-                            voice_duration = 0.0
-                            t_llm = 0.0
+                log_block = (
+                    f"\n{'━' * 10} ⏱️ {current_time_str} {'━' * 10}\n"
+                    f"📥 OCR -> MT pipeline\n"
+                    f"🔄 MT ({t_mt:.2f}s) -> 🗣️ TTS ({voice_duration:.1f}s):\n"
+                    f"   [{speaker_name}] \"{translated_text}\"\n"
+                    f"ℹ️ Prev Status: {prev_status}"
+                )
+                self.signals.log.emit(log_block)
 
-                            if cfg.get("translate"):
-                                t_llm_start = time.time()
-                                res = ai.translate(stable_text)
-                                t_llm = time.time() - t_llm_start
+                setattr(mt_tts_job, "last_text", stable_text)
+                last_audio_finish_time = time.time() + voice_duration
 
-                                if res and res['text']:
-                                    translated_text = res['text']
-                                    self.signals.subtitle.emit(res['name'], res['text'])
+        capture_thread = threading.Thread(target=capture_job, daemon=True)
+        ocr_thread = threading.Thread(target=ocr_job, daemon=True)
+        mt_tts_thread = threading.Thread(target=mt_tts_job, daemon=True)
 
-                                    # Озвучка
-                                    voice_duration, speaker_name = audio.speak(res['text'], res['name'], res['gender'])
-                            else:
-                                # Режим чтения оригинала
-                                translated_text = "(Original) " + stable_text
-                                self.signals.subtitle.emit("", stable_text)
-                                voice_duration, speaker_name = audio.speak(stable_text, "", "m")
+        capture_thread.start()
+        ocr_thread.start()
+        mt_tts_thread.start()
 
-                            # --- ФОРМИРОВАНИЕ БЛОКА ЛОГОВ ---
-                            current_time_str = datetime.datetime.now().strftime("%H:%M:%S")
-
-                            log_block = (
-                                f"\n{'━' * 10} ⏱️ {current_time_str} {'━' * 10}\n"
-                                f"📥 OCR ({t_ocr:.2f}s) [{int(similarity * 100)}% match]:\n"
-                                f"   \"{stable_text[:50]}...\"\n"
-                                f"🔄 LLM ({t_llm:.2f}s) -> 🗣️ TTS ({voice_duration:.1f}s):\n"
-                                f"   [{speaker_name}] \"{translated_text}\"\n"
-                                f"ℹ️ Prev Status: {prev_status}"
-                            )
-
-                            self.signals.log.emit(log_block)
-
-                            # Обновляем состояние
-                            last_stable_text = stable_text
-                            last_audio_finish_time = time.time() + voice_duration
-                            last_phrase_duration = voice_duration
-
-            except Exception as e:
-                self.signals.log.emit(f"Error loop: {e}")
-
-            process_time = time.time() - loop_start
-            sleep_time = max(0.15 - process_time, 0.01)
-            time.sleep(sleep_time)
+        while self.running:
+            time.sleep(0.1)
 
 
 if __name__ == "__main__":

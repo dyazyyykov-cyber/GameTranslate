@@ -1,6 +1,7 @@
 import json
 import os
 
+
 class Config:
     def __init__(self):
         self.path = "config.json"
@@ -10,26 +11,42 @@ class Config:
             "debug": True,
             "border": True,
             "win_pos": {"x": 50, "y": 50},
-            "ocr_gpu": True,    # Принудительно использовать GPU для OCR [2]
-            "ocr_detail": 0     # Оптимизация EasyOCR
+            # OCR + MT
+            "ocr_engine": "winocr",
+            "ocr_lang": "en",
+            "mt_model_dir": "models/ct2-opus-mt-en-ru",
+            "mt_device": "cuda",
+            "mt_compute_type": "int8_float16",
+            # Runtime tuning (настройка под RTX 4060)
+            "loop_fps": 30,
+            "frame_diff_threshold": 3.0,
+            "stabilizer_history": 3,
+            "stabilizer_threshold": 0.85,
         }
         self.data = self._load()
 
     def _load(self):
         if os.path.exists(self.path):
             try:
-                with open(self.path, 'r') as f: return json.load(f)
-            except: pass
+                with open(self.path, 'r') as f:
+                    return json.load(f)
+            except Exception:
+                pass
         return self.defaults.copy()
 
     def save(self):
         try:
-            with open(self.path, 'w') as f: json.dump(self.data, f, indent=4)
-        except: pass
+            with open(self.path, 'w') as f:
+                json.dump(self.data, f, indent=4)
+        except Exception:
+            pass
 
-    def get(self, key): return self.data.get(key, self.defaults.get(key))
+    def get(self, key):
+        return self.data.get(key, self.defaults.get(key))
+
     def set(self, key, value):
         self.data[key] = value
         self.save()
+
 
 cfg = Config()

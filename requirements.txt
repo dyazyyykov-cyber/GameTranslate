@@ -1,0 +1,9 @@
+ctranslate2
+sentencepiece
+winocr
+opencv-python
+numpy
+mss
+PyQt6
+torch
+sounddevice
