@@ -79,7 +79,7 @@ class WindowsOCREngine:
             try:
                 return res.text or ""
             except Exception:
-                pass
+                return ""
         if isinstance(res, dict) and "text" in res:
             return res.get("text") or ""
         return str(res)
@@ -204,7 +204,13 @@ class AIEngine:
 
         prev_small = None
         while self.running.is_set():
-            frame = capture_func()
+            try:
+                frame = capture_func()
+            except Exception as e:
+                self.log(f"⚠️ Capture error: {e}")
+                time.sleep(delay)
+                continue
+
             if frame is None:
                 time.sleep(delay)
                 continue
