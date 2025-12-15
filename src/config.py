@@ -13,7 +13,7 @@ class Config:
             "win_pos": {"x": 50, "y": 50},
             # OCR + MT
             "ocr_engine": "winocr",
-            "ocr_lang": "en",
+            "ocr_lang": "en-US",
             "mt_model_dir": "models/ct2-opus-mt-en-ru",
             "mt_device": "cuda",
             "mt_compute_type": "int8_float16",
