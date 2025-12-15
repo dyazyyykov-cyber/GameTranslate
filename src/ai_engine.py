@@ -15,11 +15,12 @@ import sentencepiece as spm
 import ctranslate2
 from .config import cfg
 
+WINOCR_IMPORT_ERROR = None
 try:
-    # winocr: обёртка над Windows.Media.Ocr (работает только на Windows)
-    from winocr import WinOCR
-except Exception:  # pragma: no cover - импорт проверяется на целевой системе
-    WinOCR = None
+    import winocr  # module-style API
+except Exception as e:  # pragma: no cover
+    winocr = None
+    WINOCR_IMPORT_ERROR = repr(e)
 
 
 @dataclass
@@ -59,12 +60,22 @@ class WindowsOCREngine:
     чтобы избежать накладных расходов на создание цикла для каждого кадра.
     """
 
-    def __init__(self, lang: str = "en"):
-        if WinOCR is None:
-            raise RuntimeError("winocr is not available on this platform")
-        self.lang = lang
-        self.ocr = WinOCR(lang=self.lang)
+    def __init__(self, lang: str = "en-US"):
+        if winocr is None:
+            raise RuntimeError(f"winocr import failed: {WINOCR_IMPORT_ERROR}")
+
+        self.lang = self._normalize_lang(lang)
         self.loop: Optional[asyncio.AbstractEventLoop] = None
+
+    @staticmethod
+    def _normalize_lang(lang: str) -> str:
+        # У тебя capability установлены как en-US / ru-RU
+        l = (lang or "").strip()
+        if l.lower() == "en":
+            return "en-US"
+        if l.lower() == "ru":
+            return "ru-RU"
+        return l or "en-US"
 
     def attach_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop = loop
@@ -85,8 +96,8 @@ class WindowsOCREngine:
         return str(res)
 
     async def _run(self, img: np.ndarray) -> str:
-        # WinOCR ожидает BGR/PIL; библиотека умеет принимать numpy-массивы
-        res = await self.ocr.recognize(img)
+        # winocr: async API
+        res = await winocr.recognize_cv2(img, self.lang)
         return self._extract_text(res)
 
     def run(self, img: np.ndarray) -> str:
