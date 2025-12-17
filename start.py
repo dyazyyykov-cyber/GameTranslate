@@ -4,6 +4,7 @@ import time
 import io
 import ctypes
 import datetime
+import traceback
 from PyQt6.QtWidgets import QApplication, QMainWindow, QFrame, QLabel, QVBoxLayout, QWidget
 from PyQt6.QtCore import Qt, pyqtSignal, QObject, QRect
 from PyQt6.QtGui import QColor
@@ -156,19 +157,23 @@ class MainApp(QMainWindow):
                 voice_duration = 0.0
                 t_mt = 0.0
 
-                if cfg.get("translate"):
-                    t_mt_start = time.time()
-                    res = ai.translate(stable_text)
-                    t_mt = time.time() - t_mt_start
+                try:
+                    if cfg.get("translate"):
+                        t_mt_start = time.time()
+                        res = ai.translate(stable_text)
+                        t_mt = time.time() - t_mt_start
 
-                    if res and res['text']:
-                        translated_text = res['text']
-                        self.signals.subtitle.emit(res['name'], res['text'])
-                        voice_duration, speaker_name = audio.speak(res['text'], res['name'], res['gender'])
-                else:
-                    translated_text = stable_text
-                    self.signals.subtitle.emit("", stable_text)
-                    voice_duration, speaker_name = audio.speak(stable_text, "", "m")
+                        if res and res['text']:
+                            translated_text = res['text']
+                            self.signals.subtitle.emit(res['name'], res['text'])
+                            voice_duration, speaker_name = audio.speak(res['text'], res['name'], res['gender'])
+                    else:
+                        translated_text = stable_text
+                        self.signals.subtitle.emit("", stable_text)
+                        voice_duration, speaker_name = audio.speak(stable_text, "", "m")
+                except Exception as e:
+                    self.signals.log.emit(f"🔥 MT/TTS runtime error: {e}\n{traceback.format_exc()}")
+                    continue
 
                 current_time_str = datetime.datetime.now().strftime("%H:%M:%S")
                 prev_status = "🔴 Interrupted" if time.time() < last_audio_finish_time else "🟢 Completed"

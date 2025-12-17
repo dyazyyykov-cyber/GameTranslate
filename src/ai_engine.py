@@ -243,8 +243,10 @@ class AIEngine:
         target_fps = max(1, cfg.get("loop_fps"))
         delay = 1.0 / target_fps
         diff_threshold = cfg.get("frame_diff_threshold")
+        static_interval = max(0.0, cfg.get("static_ocr_interval", 0.0))
 
         prev_small = None
+        last_sent_time = 0.0
         while self.running.is_set():
             try:
                 frame = capture_func()
@@ -260,15 +262,21 @@ class AIEngine:
             small = cv2.resize(frame, (0, 0), fx=0.3, fy=0.3)
             gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
 
+            should_send = True
             if prev_small is not None:
                 diff = cv2.absdiff(gray, prev_small)
                 mean_diff = float(np.mean(diff))
                 if mean_diff < diff_threshold:
-                    time.sleep(delay)
-                    continue
+                    if static_interval > 0 and (time.time() - last_sent_time) >= static_interval:
+                        should_send = True
+                    else:
+                        time.sleep(delay)
+                        continue
             prev_small = gray
 
-            self.frame_queue.put_latest(frame)
+            if should_send:
+                last_sent_time = time.time()
+                self.frame_queue.put_latest(frame)
             time.sleep(delay)
 
     def _ocr_loop(self):
