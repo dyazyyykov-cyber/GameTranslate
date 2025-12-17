@@ -20,6 +20,7 @@ class Config:
             # Runtime tuning (настройка под RTX 4060)
             "loop_fps": 30,
             "frame_diff_threshold": 3.0,
+            "static_ocr_interval": 0.25,
             "stabilizer_history": 3,
             "stabilizer_threshold": 0.85,
         }
