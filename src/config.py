@@ -42,8 +42,8 @@ class Config:
         except Exception:
             pass
 
-    def get(self, key):
-        return self.data.get(key, self.defaults.get(key))
+    def get(self, key, default=None):
+        return self.data.get(key, self.defaults.get(key, default))
 
     def set(self, key, value):
         self.data[key] = value
