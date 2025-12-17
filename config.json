@@ -13,5 +13,8 @@
         "y": 141
     },
     "ocr_gpu": true,
-    "ocr_detail": 0
+    "ocr_detail": 0,
+    "frame_diff_threshold": 0.0,
+    "loop_fps": 10,
+    "stabilizer_history": 1
 }
