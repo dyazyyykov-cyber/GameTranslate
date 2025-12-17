@@ -15,12 +15,10 @@ import sentencepiece as spm
 import ctranslate2
 from .config import cfg
 
-WINOCR_IMPORT_ERROR = None
 try:
-    import winocr  # module-style API
-except Exception as e:  # pragma: no cover
-    winocr = None
-    WINOCR_IMPORT_ERROR = repr(e)
+    import winocr as winocr_mod
+except Exception:  # pragma: no cover
+    winocr_mod = None
 
 
 @dataclass
@@ -54,30 +52,25 @@ class TextStabilizer:
 
 
 class WindowsOCREngine:
-    """Синхронная обёртка над winocr.
+    def __init__(self, lang: str = "en"):
+        if winocr_mod is None:
+            raise RuntimeError("winocr is not available on this platform")
+        self.lang = lang
+        self.loop = None
 
-    OCR вызывается из OCR-потока, в котором создаётся event loop один раз,
-    чтобы избежать накладных расходов на создание цикла для каждого кадра.
-    """
+        # предпочитаем функциональный API (у тебя именно он)
+        self._fn = getattr(winocr_mod, "recognize_cv2", None)
+        if self._fn is None:
+            # на всякий случай: если у кого-то всё же есть WinOCR класс
+            self._cls = getattr(winocr_mod, "WinOCR", None)
+            if self._cls is None:
+                raise RuntimeError("winocr package does not provide recognize_cv2 or WinOCR")
 
-    def __init__(self, lang: str = "en-US"):
-        if winocr is None:
-            raise RuntimeError(f"winocr import failed: {WINOCR_IMPORT_ERROR}")
+            self._ocr = self._cls(lang=self.lang)
+        else:
+            self._ocr = None
 
-        self.lang = self._normalize_lang(lang)
-        self.loop: Optional[asyncio.AbstractEventLoop] = None
-
-    @staticmethod
-    def _normalize_lang(lang: str) -> str:
-        # У тебя capability установлены как en-US / ru-RU
-        l = (lang or "").strip()
-        if l.lower() == "en":
-            return "en-US"
-        if l.lower() == "ru":
-            return "ru-RU"
-        return l or "en-US"
-
-    def attach_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+    def attach_loop(self, loop):
         self.loop = loop
 
     @staticmethod
@@ -86,24 +79,62 @@ class WindowsOCREngine:
             return ""
         if isinstance(res, str):
             return res
+
+        # если вернули список линий/слов
+        if isinstance(res, list):
+            parts = []
+            for it in res:
+                if isinstance(it, str):
+                    parts.append(it)
+                elif isinstance(it, dict):
+                    t = it.get("text") or ""
+                    if t:
+                        parts.append(t)
+                elif hasattr(it, "text"):
+                    t = getattr(it, "text", "") or ""
+                    if t:
+                        parts.append(t)
+            return " ".join(parts).strip()
+
+        # dict с полем text / lines
+        if isinstance(res, dict):
+            if "text" in res:
+                return (res.get("text") or "").strip()
+            if "lines" in res and isinstance(res["lines"], list):
+                return " ".join([(ln.get("text") or "") for ln in res["lines"] if isinstance(ln, dict)]).strip()
+
         if hasattr(res, "text"):
             try:
-                return res.text or ""
+                return (res.text or "").strip()
             except Exception:
                 return ""
-        if isinstance(res, dict) and "text" in res:
-            return res.get("text") or ""
-        return str(res)
 
-    async def _run(self, img: np.ndarray) -> str:
-        # winocr: async API
-        res = await winocr.recognize_cv2(img, self.lang)
-        return self._extract_text(res)
+        return str(res).strip()
 
-    def run(self, img: np.ndarray) -> str:
+    def run(self, img):
+        # 1) функциональный API
+        if self._fn is not None:
+            try:
+                out = self._fn(img, self.lang)
+            except TypeError:
+                out = self._fn(img)
+
+            # если это coroutine — нужен loop
+            import asyncio, inspect
+            if inspect.isawaitable(out):
+                if self.loop is None:
+                    self.loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(self.loop)
+                out = self.loop.run_until_complete(out)
+
+            return self._extract_text(out)
+
+        # 2) классический API
+        import asyncio
         if self.loop is None:
             raise RuntimeError("Event loop is not attached for OCR thread")
-        return self.loop.run_until_complete(self._run(img))
+        out = self.loop.run_until_complete(self._ocr.recognize(img))
+        return self._extract_text(out)
 
 
 class CT2Translator:
